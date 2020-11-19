@@ -50,6 +50,12 @@ class ImportJob
     protected $icsMapper;
 
     /**
+     * @var \GeorgRinger\NewsImporticsxml\Mapper\CsvMapper
+     * @inject
+     */
+    protected $csvMapper;
+
+    /**
      * @var \GeorgRinger\News\Domain\Service\NewsImportService
      * @inject
      */
@@ -81,6 +87,9 @@ class ImportJob
                 break;
             case 'ics':
                 $data = $this->icsMapper->map($this->configuration);
+                break;
+            case 'csv':
+                $data = $this->csvMapper->map($this->configuration);
                 break;
             default:
                 $message = sprintf('Format "%s" is not supported!', $this->configuration->getFormat());

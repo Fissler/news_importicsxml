@@ -36,6 +36,9 @@
 			<trans-unit id="format.ics" xml:space="preserve">
 				<source>ICS</source>
 			</trans-unit>
+			<trans-unit id="format.csv" xml:space="preserve">
+				<source>CSV</source>
+			</trans-unit>
 			<trans-unit id="mapping" xml:space="preserve">
 				<source>Category Mapping</source>
 			</trans-unit>
