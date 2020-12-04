@@ -10,7 +10,6 @@ namespace GeorgRinger\NewsImporticsxml\Mapper;
  */
 
 use GeorgRinger\NewsImporticsxml\Domain\Model\Dto\TaskConfiguration;
-use SimpleXMLElement;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 /**
@@ -38,6 +37,8 @@ class CsvMapper extends AbstractMapper implements MapperInterface
         $items = $this->readCsvFile($importFile);
 
         foreach ($items as $item) {
+            $content = $this->cleanup($item['content'] ?? '');
+            $contentElements = $this->parseHtmlToContentElements($content);
             $singleItem = [
                 'import_source' => $this->getImportSource(),
                 'import_id'     => $item['link'] ?? '',
@@ -45,14 +46,16 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                 'cruser_id'     => $GLOBALS['BE_USER']->user['uid'],
                 'type'          => 0,
                 'pid'           => $configuration->getPid(),
-                'title'         => $item['title'],
-                'bodytext'      => $this->cleanup($item['content'] ?? ''),
+                'title'         => $item['title'] ?? 'no Title(' . uniqid() . ')',
+                'bodytext'      => '', //$content,
+                'content'       => $contentElements,
+                'content_elements' => '',
+                'teaser'        => $this->findTeaser($contentElements),
                 'author'        => '',
-                'media'         => '',
-                //$this->getRemoteFile($item->getEnclosureUrl(), $item->getEnclosureType(), $item->getId()),
+                'media'         => $this->getRemoteFile($this->findFirstImage($contentElements)),
                 'datetime'      => strtotime($item['publishdate']),
-                'categories'    => '',
-                //$this->getCategories($item->xml, $configuration),
+                'categories'    => $this->getGroupingElements($item['categories']),
+                'tags'          => $this->getGroupingElements($item['tags']),
                 '_dynamicData'  => [
                     'reference'         => $item,
                     'news_importicsxml' => [
@@ -75,12 +78,11 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     }
 
     /**
-     * @param $url
-     * @param $mimeType
-     * @param $id
+     * @param     $url
+     * @param int $id
      * @return array
      */
-    protected function getRemoteFile($url, $mimeType, $id)
+    protected function getRemoteFile($url)
     {
         $extensions = [
             'image/jpeg'      => 'jpg',
@@ -90,8 +92,10 @@ class CsvMapper extends AbstractMapper implements MapperInterface
         ];
 
         $media = [];
-        if (!empty($url) && isset($extensions[$mimeType])) {
-            $file = 'uploads/tx_newsimporticsxml/' . $id . '_' . md5($url) . '.' . $extensions[$mimeType];
+        $fileInfo = pathinfo($url);
+        if (!empty($url)) {
+            GeneralUtility::mkdir(PATH_site . 'uploads/tx_newsimporticsxml/');
+            $file = 'uploads/tx_newsimporticsxml/' . $fileInfo['basename'];
             if (is_file(PATH_site . $file)) {
                 $status = true;
             } else {
@@ -110,35 +114,17 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     }
 
     /**
-     * @param SimpleXMLElement  $xml
-     * @param TaskConfiguration $configuration
+     * @param string $elements
      * @return array
      */
-    protected function getCategories(SimpleXMLElement $xml, TaskConfiguration $configuration)
+    protected function getGroupingElements($elements): array
     {
-        $categoryIds = $categoryTitles = [];
-        $categories  = $xml->category;
-        if ($categories) {
-            foreach ($categories as $cat) {
-                $categoryTitles[] = (string)$cat;
-            }
+        $groupingIds = [];
+        $elements = str_replace(['[', ']', '"'], [''], $elements);
+        $groupingElements = explode(',', $elements);
+        if (!empty($groupingElements)) {
         }
-        if (!empty($categoryTitles)) {
-            if (!$configuration->getMapping()) {
-                $this->logger->info('Categories found during import but no mapping assigned in the task!');
-            } else {
-                $categoryMapping = $configuration->getMappingConfigured();
-                foreach ($categoryTitles as $title) {
-                    if (!isset($categoryMapping[$title])) {
-                        $this->logger->warning(sprintf('Category mapping is missing for category "%s"', $title));
-                    } else {
-                        $categoryIds[] = $categoryMapping[$title];
-                    }
-                }
-            }
-        }
-
-        return $categoryIds;
+        return $groupingIds;
     }
 
     /**
@@ -151,6 +137,107 @@ class CsvMapper extends AbstractMapper implements MapperInterface
         $replace = [LF, LF, LF, LF];
         $out     = str_replace($search, $replace, $content);
         return $out;
+    }
+
+    /**
+     * @param string $content
+     * @return array
+     */
+    protected function parseHtmlToContentElements(string $content): array
+    {
+        $htmlDom = new \DOMDocument();
+        $htmlDom->loadHTML('<html>' . $content . '</html>');
+        $elements = $textImage = [];
+
+        $domElements = $htmlDom->getElementsByTagName('*');
+
+        /** @var \DOMElement $domElement */
+        foreach ($domElements as $domElement) {
+            $element = null;
+            switch ($domElement->nodeName) {
+                case 'img' :
+                    $parent = $domElement->parentNode;
+                    $link   = '';
+                    if ($parent->nodeName === 'a') {
+                        $link = $parent->getAttribute('href');
+                    }
+                    $element = [
+                        'tag'    => 'img',
+                        'params' => [
+                            'src'   => $domElement->getAttribute('src'),
+                            'alt'   => $domElement->getAttribute('alt'),
+                            'title' => $domElement->getAttribute('title'),
+                            'link'  => $link,
+                        ],
+                    ];
+                    break;
+                case 'p' :
+                case 'div' :
+                    if (($textContent = $domElement->textContent)) {
+                        $element = [
+                            'tag'    => 'p',
+                            'params' => [
+                                'textNode' => $textContent,
+                                ]
+                        ];
+                    }
+                    break;
+                default :
+            }
+            if ($element) {
+                $elements[] = $element;
+            }
+        }
+        $elementsClone = $elements;
+        foreach ($elements as $key => $element) {
+            if (!array_key_exists($key, $elementsClone)) {
+                continue;
+            }
+            $newContentElement = [];
+            if ($element['tag'] === 'p') {
+                $newContentElement['text'] = $element;
+                if ($elements[$key + 1]['tag'] === 'img') {
+                    $newContentElement['image'] = $elements[$key + 1];
+                    unset($elementsClone[$key + 1]);
+                }
+            } else {
+                $newContentElement['image'] = $element;
+            }
+            $textImage[] = $newContentElement;
+        }
+        return $textImage;
+    }
+
+    /**
+     * @param array $contentElements
+     * @return string
+     */
+    protected function findTeaser(array $contentElements): string
+    {
+        $pTag = $this->findFirstTag('text', $contentElements);
+        $teaser = $pTag['params']['textNode'] ?? '';
+        return substr($teaser, 0, strpos($teaser, ' ', 150));
+    }
+
+    /**
+     * @param array $contentElements
+     * @return string
+     */
+    protected function findFirstImage(array $contentElements): string
+    {
+        $imageTag = $this->findFirstTag('image', $contentElements);
+        return $imageTag['params']['src'] ?? '';
+    }
+
+    /**
+     * @param string $tag
+     * @param array  $contentElements
+     * @return mixed
+     */
+    protected function findFirstTag(string $tag, array $contentElements)
+    {
+        $tags = array_column($contentElements, $tag) ?? [];
+        return reset($tags);
     }
 
     /**

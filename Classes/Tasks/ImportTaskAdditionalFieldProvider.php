@@ -28,7 +28,7 @@ class ImportTaskAdditionalFieldProvider implements AdditionalFieldProviderInterf
     {
         $additionalFields = [];
         $fields = [
-            'format' => ['type' => 'select', 'options' => ['xml', 'ics']],
+            'format' => ['type' => 'select', 'options' => ['xml', 'ics', 'csv']],
             'path' => ['type' => 'input'],
             'pid' => ['type' => 'input'],
             'mapping' => ['type' => 'textarea'],
