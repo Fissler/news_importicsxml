@@ -5,6 +5,11 @@ if (!defined('TYPO3_MODE')) {
 
 call_user_func(
     function ($extKey) {
+        \TYPO3\CMS\Core\Utility\ExtensionManagementUtility::addTypoScript(
+            $extKey,
+            'setup',
+            "@import 'EXT:news_importicsxml/Configuration/TypoScript/setup.txt'"
+        );
         $GLOBALS['TYPO3_CONF_VARS']['SYS']['formEngine']['nodeRegistry'][1496812651] = [
             'nodeName' => 'json',
             'priority' => 40,

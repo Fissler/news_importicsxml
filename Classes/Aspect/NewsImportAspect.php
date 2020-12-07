@@ -9,12 +9,18 @@ namespace GeorgRinger\NewsImporticsxml\Aspect;
  * LICENSE.txt file that was distributed with this source code.
  */
 use GeorgRinger\NewsImporticsxml\Domain\Model\News;
+use GeorgRinger\NewsImporticsxml\Domain\Model\Tag;
 
 /**
  * Persist dynamic data of import
  */
 class NewsImportAspect
 {
+    /**
+     * @var \GeorgRinger\News\Domain\Repository\TagRepository
+     * @inject
+     */
+    protected $tagRepository;
 
     /**
      * @param array $importData
@@ -25,6 +31,15 @@ class NewsImportAspect
         /** @var News $news */
         if (is_array($importData['_dynamicData']) && is_array($importData['_dynamicData']['news_importicsxml'])) {
             $news->setNewsImportData(json_encode($importData['_dynamicData']['news_importicsxml']));
+        }
+        if (isset($importData['tags'])) {
+            foreach ($importData['tags'] as $tagUid) {
+                /** @var Tag $tag */
+                $tag = $this->tagRepository->findByUid($tagUid);
+                if ($tag) {
+                    $news->addTag($tag);
+                }
+            }
         }
     }
 }

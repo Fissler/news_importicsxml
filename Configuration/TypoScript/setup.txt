@@ -1,0 +1,8 @@
+config.tx_extbase.persistence.classes {
+    GeorgRinger\NewsImporticsxml\Domain\Model\Tag {
+        mapping {
+            tableName = tx_news_domain_model_tag
+        }
+    }
+}
+
