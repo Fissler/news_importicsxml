@@ -10,7 +10,11 @@
 namespace GeorgRinger\NewsImporticsxml\Service;
 
 use GeorgRinger\News\Domain\Service\AbstractImportService;
+use RuntimeException;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
+use TYPO3\CMS\Core\Resource\Exception\AbstractFileOperationException;
+use TYPO3\CMS\Core\Resource\Exception\ExistingTargetFileNameException;
+use TYPO3\CMS\Core\Resource\Exception\ResourceDoesNotExistException;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 /**
@@ -24,16 +28,16 @@ class ImageImportService extends AbstractImportService
      * @param int   $pid
      * @param int   $uid
      * @return bool
-     * @throws \RuntimeException
-     * @throws \TYPO3\CMS\Core\Resource\Exception\AbstractFileOperationException
-     * @throws \TYPO3\CMS\Core\Resource\Exception\ExistingTargetFileNameException
+     * @throws RuntimeException
+     * @throws AbstractFileOperationException
+     * @throws ExistingTargetFileNameException|\InvalidArgumentException
      */
     public function createFalRelation(array $mediaItem, int $pid, int $uid): bool
     {
         // get fileobject by given identifier (file UID, combined identifier or path/filename)
         try {
             $file = $this->getResourceFactory()->retrieveFileOrFolderObject($mediaItem['image']);
-        } catch (\TYPO3\CMS\Core\Resource\Exception\ResourceDoesNotExistException $exception) {
+        } catch (ResourceDoesNotExistException $exception) {
             $file = false;
         }
 
@@ -73,11 +77,7 @@ class ImageImportService extends AbstractImportService
         $dataHandler->process_datamap();
 
         // Error or success reporting
-        if (count($dataHandler->errorLog) === 0) {
-            return true;
-        } else {
-            return false;
-        }
+        return count($dataHandler->errorLog) === 0;
     }
 
 }

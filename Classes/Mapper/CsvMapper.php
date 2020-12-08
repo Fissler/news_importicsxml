@@ -1,4 +1,12 @@
 <?php
+/*
+ * Copyright (c) 2008-2020 dotSource GmbH.
+ * All rights reserved.
+ * http://www.dotsource.de
+ *
+ * Contributors:
+ * Sven Lamprecht - initial contents
+ */
 
 namespace GeorgRinger\NewsImporticsxml\Mapper;
 
@@ -74,9 +82,9 @@ class CsvMapper extends AbstractMapper implements MapperInterface
 
         foreach ($items as $item) {
             $content         = $this->cleanup($item['content'] ?? '');
-            $contentElements = $this->parseHtmlToContentElements($content, $configuration);
+            $contentElements = $this->parseHtmlToContentElements($content);
             $singleItem      = [
-                'hidden'            => ($item['status'] !== 'publish'),
+                'hidden'           => ($item['status'] !== 'publish'),
                 'import_source'    => $this->getImportSource(),
                 'import_id'        => $item['link'] ?? '', //ToDo create unique import id from link or from import file
                 'crdate'           => $GLOBALS['EXEC_TIME'],
@@ -98,7 +106,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                         'importDate' => date('d.m.Y h:i:s', $GLOBALS['EXEC_TIME']),
                         'feed'       => $configuration->getPath(),
                         'url'        => $item['link'] ?? '',
-                        'guid'       => '',
+                        'guid'       => '', //ToDo import id
                     ],
                 ],
             ];
@@ -154,12 +162,12 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     {
         $groupingIds      = [];
         $elements         = str_replace(['[', ']', '"'], [''], $elements);
-        $groupingElements = explode(',', $elements);
+        $groupingElements = GeneralUtility::trimExplode(',', $elements, true);
         if (!empty($groupingElements)) {
             foreach ($groupingElements as $element) {
                 $groupingElement = $this->{$repository . 'Repository'}->findByTitle($element);
                 if (!$groupingElement->getFirst()) {
-                    $newGroupElement = $repository === 'tag'
+                    $newGroupElement = ($repository === 'tag')
                         ? GeneralUtility::makeInstance(
                             'GeorgRinger\\NewsImporticsxml\\Domain\\Model\\' . ucfirst($repository)
                         )
@@ -265,6 +273,9 @@ class CsvMapper extends AbstractMapper implements MapperInterface
      * @param TaskConfiguration $configuration
      * @return string
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \TYPO3\CMS\Core\Resource\Exception\AbstractFileOperationException
+     * @throws \TYPO3\CMS\Core\Resource\Exception\ExistingTargetFileNameException
      * @throws \TYPO3\CMS\Extbase\Persistence\Exception\IllegalObjectTypeException
      */
     protected function createTextPicContentElements(array $contentElements, TaskConfiguration $configuration): string
