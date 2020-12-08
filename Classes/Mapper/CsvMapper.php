@@ -239,7 +239,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                                 $params = $item['elements'][0]['tag'] === 'img' ? $item['elements'][0]['params'] : $item['elements'][0]['elements'][0]['params'];
                                 $images['img_' . $counter] = [
                                     'tag'   => 'img',
-                                    'class' => $domElement->getAttribute('class') . ' ' . $item['class'],
+                                    'class' => $domElement->getAttribute('class'),
                                     'params' => $params
                                 ];
                                 $counter++;
@@ -283,7 +283,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
         $contentElementIds = [];
         foreach ($contentElements as $element) {
             /** @var TtContent $newContentElement */
-            $newContentElement = GeneralUtility::makeInstance('GeorgRinger\\News\\Domain\\Model\\TtContent');
+            $newContentElement = GeneralUtility::makeInstance('GeorgRinger\\News\\Domain\Model\\TtContent');
             $newContentElement->setPid($configuration->getPid());
             $newContentElement->setCType('textpic');
             $bodytext = '';
@@ -302,10 +302,10 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                         $configuration->getPid(),
                         $newContentElement->getUid()
                     );
-                    $newContentElement->setImage((bool)$image);
-                    $newContentElement->setImageorient(self::IMAGE_ORIENTATION_BELOW_CENTER);
                 }
             }
+            $newContentElement->setImage((bool)count($element['images'] ?? []));
+            $newContentElement->setImageorient(self::IMAGE_ORIENTATION_BELOW_CENTER);
             $newContentElement->setImagecols(count($element['images'] ?? []) > 1 ? 2 : 1);
         }
         return implode(',', $contentElementIds);
