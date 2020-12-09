@@ -265,6 +265,9 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                 $newContentElement['text'][] = $element;
             }
         }
+        if ($newContentElement) {
+            $textImage[] = $newContentElement;
+        }
         return $textImage;
     }
 
