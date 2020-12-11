@@ -364,7 +364,12 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     protected function &getBodyTextElements(array $elements): string
     {
         if (array_key_exists('tag', $elements)) {
-            $bodytext = '<' . $elements['tag'] . ' class="' . $elements['class'] . '" style="' . $elements['style'] . '">';
+            $href = '';
+            if ($elements['href']) {
+                $url = str_replace(['http', '%20'], ['https', ''], $elements['href']);
+                $href = ' href="' . $url . '"';
+            }
+            $bodytext = '<' . $elements['tag'] . ' class="' . $elements['class'] . '" style="' . $elements['style'] . '"' . $href . '>';
             foreach ($elements['elements'] as $element) {
                 $bodytext .= $this->getBodytextElements($element);
             }
@@ -394,18 +399,19 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                         $link = $parent->getAttribute('href');
                     }
                     $params = [
-                            'src'   => $item->getAttribute('src'),
-                            'alt'   => $item->getAttribute('alt'),
-                            'title' => $item->getAttribute('title'),
-                            'link'  => $link,
-                        ];
+                        'src'   => $item->getAttribute('src'),
+                        'alt'   => $item->getAttribute('alt'),
+                        'title' => $item->getAttribute('title'),
+                        'link'  => $link,
+                    ];
                 }
                 $childItems[] = [
-                    'tag'       => $item->nodeName,
-                    'class'     => $item->getAttribute('class'),
-                    'style'     => $item->getAttribute('style'),
-                    'elements'  => $children,
-                    'params'    => $params,
+                    'tag'      => $item->nodeName,
+                    'class'    => $item->getAttribute('class'),
+                    'style'    => $item->getAttribute('style'),
+                    'href'     => $item->getAttribute('href'),
+                    'elements' => $children,
+                    'params'   => $params,
                 ];
             } elseif ($item instanceof \DOMText) {
                 $childItems[] = [
