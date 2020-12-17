@@ -45,6 +45,12 @@
 			<trans-unit id="pid" xml:space="preserve">
 				<source>Page ID</source>
 			</trans-unit>
+			<trans-unit id="cat_pid" xml:space="preserve">
+				<source>Category Folder</source>
+			</trans-unit>
+			<trans-unit id="lang" xml:space="preserve">
+				<source>Language</source>
+			</trans-unit>
 			<trans-unit id="persistAsExternalUrl" xml:space="preserve">
 				<source>Persist article with type external page</source>
 			</trans-unit>

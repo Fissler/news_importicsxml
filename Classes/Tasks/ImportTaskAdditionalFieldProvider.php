@@ -2,7 +2,9 @@
 
 namespace GeorgRinger\NewsImporticsxml\Tasks;
 
+use TYPO3\CMS\Core\Http\ServerRequest;
 use TYPO3\CMS\Core\Messaging\FlashMessage;
+use TYPO3\CMS\Core\Site\Entity\SiteLanguage;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Lang\LanguageService;
 use TYPO3\CMS\Scheduler\AdditionalFieldProviderInterface;
@@ -32,6 +34,8 @@ class ImportTaskAdditionalFieldProvider implements AdditionalFieldProviderInterf
             'path' => ['type' => 'input'],
             'pid' => ['type' => 'input'],
             'mapping' => ['type' => 'textarea'],
+            'cat_pid' => ['type' => 'input'],
+            'lang' => ['type' => 'select', 'options' => $this->getLanguageOptions()],
 //            'email' => ['type' => 'input', 'default' => $GLOBALS['BE_USER']->user['email']],
             'persistAsExternalUrl' => ['type' => 'checkbox'],
         ];
@@ -63,12 +67,22 @@ class ImportTaskAdditionalFieldProvider implements AdditionalFieldProviderInterf
                 case 'select':
                     $options = [];
                     foreach ($configuration['options'] as $item) {
-                        $options[] = sprintf(
-                            '<option %s value="%s">%s</option>',
-                            ($taskInfo[$field] === $item) ? 'selected="selected"' : '',
-                            $item,
-                            $this->translate($field . '.' . $item)
-                        );
+                        if (is_array($item)) {
+                            $key = key($item);
+                            $options[] = sprintf(
+                                '<option %s value="%s">%s</option>',
+                                ($taskInfo[$field] == $key) ? 'selected="selected"' : '',
+                                $key,
+                                $item[$key]
+                            );
+                        } else {
+                            $options[] = sprintf(
+                                '<option %s value="%s">%s</option>',
+                                ($taskInfo[$field] === $item) ? 'selected="selected"' : '',
+                                $item,
+                                $this->translate($field . '.' . $item)
+                            );
+                        }
                     }
                     $html = '<select class="form-control" name="tx_scheduler[' . $field . ']" id="' . $field . '">' . implode(LF,
                             $options) . '</select>';
@@ -76,7 +90,7 @@ class ImportTaskAdditionalFieldProvider implements AdditionalFieldProviderInterf
             }
             $additionalFields[$field] = [
                 'code' => $html,
-                'label' => $this->translate($field)
+                'label' => $this->translate($field),
             ];
         }
         return $additionalFields;
@@ -122,6 +136,8 @@ class ImportTaskAdditionalFieldProvider implements AdditionalFieldProviderInterf
         $task->format = $submittedData['format'];
         $task->pid = $submittedData['pid'];
         $task->persistAsExternalUrl = $submittedData['persistAsExternalUrl'];
+        $task->cat_pid = $submittedData['cat_pid'];
+        $task->lang = $submittedData['lang'];
     }
 
     /**
@@ -135,5 +151,19 @@ class ImportTaskAdditionalFieldProvider implements AdditionalFieldProviderInterf
         /** @var LanguageService $languageService */
         $languageService = $GLOBALS['LANG'];
         return $languageService->sL('LLL:EXT:news_importicsxml/Resources/Private/Language/locallang.xlf:' . $key);
+    }
+
+    protected function getLanguageOptions(): array
+    {
+        /** @var ServerRequest $request */
+        $request = $GLOBALS['TYPO3_REQUEST'];
+        $languages = $request->getAttribute('site')->getLanguages();
+
+        $languageOptions = [];
+        /** @var SiteLanguage $language */
+        foreach ($languages as $language) {
+            $languageOptions[] = [$language->getLanguageId() => $language->getTitle() . ' [' . $language->getTwoLetterIsoCode() . ']'];
+        }
+        return $languageOptions;
     }
 }

@@ -23,6 +23,7 @@ use Exception;
 use GeorgRinger\News\Domain\Model\TtContent;
 use GeorgRinger\NewsImporticsxml\Domain\Model\Dto\TaskConfiguration;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Extbase\Persistence\Generic\Typo3QuerySettings;
 
 /**
  * Class CsvMapper
@@ -64,6 +65,15 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     protected $imageImportService;
 
     /**
+     * @var \TYPO3\CMS\Core\DataHandling\DataHandler
+     * @inject
+     */
+    protected $dataHandler;
+
+    /** @var int */
+    protected $targetLanguage;
+
+    /**
      * @param TaskConfiguration $configuration
      * @return array
      * @throws Exception
@@ -71,6 +81,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     public function map(TaskConfiguration $configuration)
     {
         $data = [];
+        $this->targetLanguage = $configuration->getLang();
 
         //Open file
         if (false === ($importFile = fopen(PATH_site . $configuration->getPath(), 'rb'))) {
@@ -86,20 +97,21 @@ class CsvMapper extends AbstractMapper implements MapperInterface
             $singleItem      = [
                 'hidden'           => ($item['status'] !== 'publish'),
                 'import_source'    => $this->getImportSource(),
-                'import_id'        => $item['link'] ?? '', //ToDo create unique import id from link or from import file
+                'import_id'        => md5($item['link'] ?? (string)uniqid()),
                 'crdate'           => $GLOBALS['EXEC_TIME'],
                 'cruser_id'        => $GLOBALS['BE_USER']->user['uid'],
                 'type'             => 0,
                 'pid'              => $configuration->getPid(),
                 'title'            => $item['title'] ?? 'no Title(' . uniqid() . ')',
+                'path_segment'     => pathinfo($item['link'], PATHINFO_BASENAME),
                 'bodytext'         => '', //$content,
                 'content_elements' => $this->createTextPicContentElements($contentElements, $configuration),
                 'teaser'           => $this->findTeaser($contentElements),
                 'author'           => '',
                 'media'            => $this->getRemoteFile($this->findFirstImage($contentElements)),
                 'datetime'         => strtotime($item['publishdate']),
-                'categories'       => $this->getGroupingElements($item['categories'], 'category'),
-                'tags'             => $this->getGroupingElements($item['tags'], 'tag'),
+                'categories'       => $this->getGroupingElements($item['categories'], 'category', $configuration->getCatPid()),
+                'tags'             => $this->getGroupingElements($item['tags'], 'tag', $configuration->getCatPid()),
                 '_dynamicData'     => [
                     'reference'         => $item,
                     'news_importicsxml' => [
@@ -115,7 +127,30 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                 $singleItem['externalurl'] = $item['link'] ?? '';
             }
 
-            $data[] = $singleItem;
+            $data[]                       = $singleItem;
+            if ($this->targetLanguage) {
+                $l10nItem                     = $singleItem;
+                $l10nContentElements          = [];
+                foreach ((GeneralUtility::trimExplode(',', $singleItem['content_elements']) ?? []) as $uid) {
+                    $originElement = $this->ttContentRepository->findByUid($uid);
+                    $newContentElement = $this->dataHandler->localize('tt_content', $uid, $this->targetLanguage);
+                    if ($newContentElement) {
+                        $l10nContentElements[] = $newContentElement;
+                        $l10nElement = $this->ttContentRepository->findByUid($newContentElement);
+                        $l10nElement->setImage($originElement->getImage());
+                        $l10nElement->setImageorient($originElement->getImageorient());
+                        $l10nElement->setImagecols($originElement->getImageCols());
+                    }
+                    $this->persistenceManager->persistAll();
+                }
+                if ($l10nContentElements) {
+                    $l10nItem['content_elements'] = implode(',', $l10nContentElements);
+                }
+                $l10nItem['sys_language_uid'] = $this->targetLanguage;
+                $l10nItem['l10n_parent']      = $singleItem['import_id'];
+                $l10nItem['import_id']        = $singleItem['import_id'] . '_' . $this->targetLanguage;
+                $data[]                       = $l10nItem;
+            }
         }
 
         return $data;
@@ -156,9 +191,11 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     /**
      * @param string $elements
      * @param string $repository
+     * @param int    $categoryPid
      * @return array
+     * @throws \InvalidArgumentException
      */
-    protected function getGroupingElements(string $elements, string $repository): array
+    protected function getGroupingElements(string $elements, string $repository, $categoryPid = 0): array
     {
         $groupingIds      = [];
         $elements         = str_replace(['[', ']', '"'], [''], $elements);
@@ -174,11 +211,15 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                         : GeneralUtility::makeInstance('GeorgRinger\\News\\Domain\\Model\\' . ucfirst($repository));
                     $newGroupElement->setTitle($element);
                     $newGroupElement->setSlug(strtolower($element));
-                    //ToDo make Pid configurable
-                    $newGroupElement->setPid(203);
+                    $newGroupElement->setPid($categoryPid);
                     $this->{$repository . 'Repository'}->add($newGroupElement);
                     $this->persistenceManager->persistAll();
                     $groupingElement = $this->{$repository . 'Repository'}->findByTitle($element);
+                }
+                if ($this->targetLanguage) {
+                    $table = $repository === 'tag' ? 'tx_news_domain_model_tag' : 'sys_category';
+                    $this->dataHandler->start([], []);
+                    $this->dataHandler->localize($table, $groupingElement->getFirst()->getUid(), $this->targetLanguage);
                 }
                 $groupingIds[] = $groupingElement->getFirst()->getUid();
             }
@@ -472,6 +513,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     protected function enableTagSearching()
     {
         $objectManager = GeneralUtility::makeInstance('TYPO3\\CMS\Extbase\\Object\\ObjectManager');
+        /** @var Typo3QuerySettings $querySettings */
         $querySettings = $objectManager->get('TYPO3\\CMS\\Extbase\\Persistence\\Generic\\Typo3QuerySettings');
         $querySettings->setRespectStoragePage(false);
 

@@ -34,6 +34,12 @@ class TaskConfiguration
     /** @var bool */
     protected $persistAsExternalUrl = false;
 
+    /** @var int */
+    protected $cat_pid;
+
+    /** @var int */
+    protected $lang;
+
     /**
      * @return string
      */
@@ -148,4 +154,41 @@ class TaskConfiguration
 
         return $out;
     }
+
+    /**
+     * @return int
+     */
+    public function getCatPid()
+    {
+        return $this->cat_pid;
+    }
+
+    /**
+     * @param int $cat_pid
+     * @return TaskConfiguration
+     */
+    public function setCatPid(int $cat_pid): TaskConfiguration
+    {
+        $this->cat_pid = $cat_pid;
+        return $this;
+    }
+
+    /**
+     * @return int
+     */
+    public function getLang()
+    {
+        return $this->lang;
+    }
+
+    /**
+     * @param int $lang
+     * @return TaskConfiguration
+     */
+    public function setLang(int $lang): TaskConfiguration
+    {
+        $this->lang = $lang;
+        return $this;
+    }
+
 }

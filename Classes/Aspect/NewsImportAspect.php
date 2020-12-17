@@ -41,5 +41,6 @@ class NewsImportAspect
                 }
             }
         }
+        $news->setPathSegment($importData['path_segment'] ?? '');
     }
 }

@@ -11,6 +11,8 @@ namespace GeorgRinger\NewsImporticsxml\Tasks;
 
 use GeorgRinger\NewsImporticsxml\Domain\Model\Dto\TaskConfiguration;
 use GeorgRinger\NewsImporticsxml\Jobs\ImportJob;
+use TYPO3\CMS\Core\Http\ServerRequest;
+use TYPO3\CMS\Core\Site\Entity\SiteLanguage;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\Object\ObjectManager;
 use TYPO3\CMS\Lang\LanguageService;
@@ -40,6 +42,12 @@ class ImportTask extends AbstractTask
     /** @var int */
     public $persistAsExternalUrl;
 
+    /** @var int */
+    public $cat_pid;
+
+    /** @var int */
+    public $lang;
+
     public function execute()
     {
         $success = true;
@@ -58,10 +66,11 @@ class ImportTask extends AbstractTask
      */
     public function getAdditionalInformation()
     {
-        return sprintf('%s: %s,' . LF . ' %s: %s ' . LF . '%s: %s',
+        return sprintf('%s: %s,' . LF . ' %s: %s ' . LF . '%s: %s' . LF . '%s: %s',
             $this->translate('format'), strtoupper($this->format),
             $this->translate('path'), GeneralUtility::fixed_lgd_cs($this->path, 200),
-            $this->translate('pid'), $this->pid);
+            $this->translate('pid'), $this->pid,
+            $this->translate('lang'), $this->getLanguage($this->lang));
     }
 
     /**
@@ -76,6 +85,8 @@ class ImportTask extends AbstractTask
         $configuration->setFormat($this->format);
         $configuration->setPid($this->pid);
         $configuration->setPersistAsExternalUrl($this->persistAsExternalUrl);
+        $configuration->setCatPid($this->cat_pid);
+        $configuration->setLang($this->lang);
 
         return $configuration;
     }
@@ -89,5 +100,19 @@ class ImportTask extends AbstractTask
         /** @var LanguageService $languageService */
         $languageService = $GLOBALS['LANG'];
         return $languageService->sL('LLL:EXT:news_importicsxml/Resources/Private/Language/locallang.xlf:' . $key);
+    }
+
+    /**
+     * @param $languageId
+     * @return string
+     */
+    protected function getLanguage($languageId): string
+    {
+        /** @var ServerRequest $request */
+        $request = $GLOBALS['TYPO3_REQUEST'];
+        $languages = $request->getAttribute('site')->getLanguages();
+        /** @var SiteLanguage $language */
+        $language = $languages[$languageId] ?? null;
+        return $language->getTitle() ?? 'default';
     }
 }
