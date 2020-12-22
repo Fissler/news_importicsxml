@@ -240,8 +240,8 @@ class CsvMapper extends AbstractMapper implements MapperInterface
      */
     protected function cleanup(string $content): string
     {
-        $search  = ['<br />', '<br>', '<br/>', LF . LF, '&'];
-        $replace = ['', '', '', '', '&amp;'];
+        $search  = [LF . LF, '&'];
+        $replace = ['', '&amp;'];
         $out     = str_replace($search, $replace, $content);
         return $out;
     }
@@ -419,24 +419,32 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     protected function &getBodyTextElements(array $elements): string
     {
         if (array_key_exists('tag', $elements)) {
-            $href = '';
+            $href = $style = $class = '';
             if ($elements['href']) {
                 $url  = str_replace(['http', '%20'], ['https', ''], $elements['href']);
                 $href = ' href="' . $url . '"';
             }
-            $bodytext = '<'
-                        . $elements['tag']
-                        . ' class="'
-                        . $elements['class']
-                        . '" style="'
-                        . $elements['style']
-                        . '"'
-                        . $href
-                        . '>';
+            if ($elements['class']) {
+                $class = ' class="' . $elements['class'] . '"';
+            }
+            if ($elements['style']) {
+                $style = ' style="' . $elements['style'] . '"';
+            }
+            $bodytext = $elements['tag'] !== 'br'
+                ?
+                '<'
+                . $elements['tag']
+                . $class
+                . $style
+                . $href
+                . '>'
+                : '<br>';
             foreach ($elements['elements'] as $element) {
                 $bodytext .= $this->getBodytextElements($element);
             }
-            $bodytext .= '</' . $elements['tag'] . '>';
+            $bodytext .= $elements['tag'] !== 'br'
+                ? '</' . $elements['tag'] . '>'
+                : '';
         } else {
             return $elements['textnode'];
         }
