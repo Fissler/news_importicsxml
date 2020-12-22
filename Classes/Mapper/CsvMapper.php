@@ -20,7 +20,7 @@ namespace GeorgRinger\NewsImporticsxml\Mapper;
 use DOMDocument;
 use DOMElement;
 use Exception;
-use GeorgRinger\News\Domain\Model\TtContent;
+use GeorgRinger\NewsImporticsxml\Domain\Model\TtContent;
 use GeorgRinger\NewsImporticsxml\Domain\Model\Dto\TaskConfiguration;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\Persistence\Generic\Typo3QuerySettings;
@@ -33,9 +33,10 @@ use TYPO3\CMS\Extbase\Persistence\Generic\Typo3QuerySettings;
 class CsvMapper extends AbstractMapper implements MapperInterface
 {
     const IMAGE_ORIENTATION_BELOW_CENTER = 8;
+    const TITLE_LANGUAGE_COPY_MARKER = '..[0]';
 
     /**
-     * @var \GeorgRinger\News\Domain\Repository\TtContentRepository
+     * @var \GeorgRinger\NewsImporticsxml\Domain\Repository\TtContentRepository
      * @inject
      */
     protected $ttContentRepository;
@@ -73,6 +74,9 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     /** @var int */
     protected $targetLanguage;
 
+    /** @var int */
+    protected $userId;
+
     /**
      * @param TaskConfiguration $configuration
      * @return array
@@ -80,7 +84,8 @@ class CsvMapper extends AbstractMapper implements MapperInterface
      */
     public function map(TaskConfiguration $configuration)
     {
-        $data = [];
+        $data                 = [];
+        $this->userId         = $GLOBALS['BE_USER']->user['uid'] ?? 1;
         $this->targetLanguage = $configuration->getLang();
 
         //Open file
@@ -99,7 +104,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                 'import_source'    => $this->getImportSource(),
                 'import_id'        => md5($item['link'] ?? (string)uniqid()),
                 'crdate'           => $GLOBALS['EXEC_TIME'],
-                'cruser_id'        => $GLOBALS['BE_USER']->user['uid'],
+                'cruser_id'        => $this->userId,
                 'type'             => 0,
                 'pid'              => $configuration->getPid(),
                 'title'            => $item['title'] ?? 'no Title(' . uniqid() . ')',
@@ -110,7 +115,11 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                 'author'           => '',
                 'media'            => $this->getRemoteFile($this->findFirstImage($contentElements)),
                 'datetime'         => strtotime($item['publishdate']),
-                'categories'       => $this->getGroupingElements($item['categories'], 'category', $configuration->getCatPid()),
+                'categories'       => $this->getGroupingElements(
+                    $item['categories'],
+                    'category',
+                    $configuration->getCatPid()
+                ),
                 'tags'             => $this->getGroupingElements($item['tags'], 'tag', $configuration->getCatPid()),
                 '_dynamicData'     => [
                     'reference'         => $item,
@@ -126,25 +135,23 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                 $singleItem['type']        = 2;
                 $singleItem['externalurl'] = $item['link'] ?? '';
             }
-
-            $data[]                       = $singleItem;
+            $l10nItem = [];
             if ($this->targetLanguage) {
-                $l10nItem                     = $singleItem;
-                $l10nContentElements          = [];
-                foreach ((GeneralUtility::trimExplode(',', $singleItem['content_elements']) ?? []) as $uid) {
+                $singleItem['title']            .= self::TITLE_LANGUAGE_COPY_MARKER;
+                $l10nItem                       = $singleItem;
+                $singleItem['content_elements'] = '';
+                $singleItem['media']            = '';
+            }
+
+            $data[] = $singleItem;
+            if ($this->targetLanguage) {
+                $l10nItem['title'] = str_replace(self::TITLE_LANGUAGE_COPY_MARKER, '', $l10nItem['title']);
+                foreach ((GeneralUtility::trimExplode(',', $l10nItem['content_elements'] ?? [])) as $uid) {
+                    /** @var TtContent $originElement */
                     $originElement = $this->ttContentRepository->findByUid($uid);
-                    $newContentElement = $this->dataHandler->localize('tt_content', $uid, $this->targetLanguage);
-                    if ($newContentElement) {
-                        $l10nContentElements[] = $newContentElement;
-                        $l10nElement = $this->ttContentRepository->findByUid($newContentElement);
-                        $l10nElement->setImage($originElement->getImage());
-                        $l10nElement->setImageorient($originElement->getImageorient());
-                        $l10nElement->setImagecols($originElement->getImageCols());
-                    }
-                    $this->persistenceManager->persistAll();
-                }
-                if ($l10nContentElements) {
-                    $l10nItem['content_elements'] = implode(',', $l10nContentElements);
+                    $originElement->setSysLanguageUid($this->targetLanguage);
+                    $originElement->setLanguageUid($this->targetLanguage);
+                    $this->ttContentRepository->update($originElement);
                 }
                 $l10nItem['sys_language_uid'] = $this->targetLanguage;
                 $l10nItem['l10n_parent']      = $singleItem['import_id'];
@@ -181,7 +188,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                     'showinpreview' => true,
                     'alt'           => $imageParams['alt'] ?? '',
                     'title'         => $imageParams['title'] ?? '',
-                    'link'          => $imageParams['link'] ?? ''
+                    'link'          => $imageParams['link'] ?? '',
                 ];
             }
         }
@@ -233,8 +240,8 @@ class CsvMapper extends AbstractMapper implements MapperInterface
      */
     protected function cleanup(string $content): string
     {
-        $search  = ['<br />', '<br>', '<br/>', LF . LF];
-        $replace = [''];
+        $search  = ['<br />', '<br>', '<br/>', LF . LF, '&'];
+        $replace = ['', '', '', '', '&amp;'];
         $out     = str_replace($search, $replace, $content);
         return $out;
     }
@@ -267,21 +274,22 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                     case 'div' :
                         if ($domElement->textContent) {
                             $element = [
-                                'tag'       => $domElement->nodeName,
-                                'class'     => $domElement->getAttribute('class'),
-                                'style'     => $domElement->getAttribute('style'),
-                                'elements'  => $this->searchDomChildElements($domElement),
+                                'tag'      => $domElement->nodeName,
+                                'class'    => $domElement->getAttribute('class'),
+                                'style'    => $domElement->getAttribute('style'),
+                                'elements' => $this->searchDomChildElements($domElement),
                             ];
                         } elseif ($domElement->parentNode->nodeName !== 'div') {
                             $collage = $this->searchDomChildElements($domElement);
-                            $images = [];
+                            $images  = [];
                             $counter = 1;
                             foreach ($collage as $item) {
-                                $params = $item['elements'][0]['tag'] === 'img' ? $item['elements'][0]['params'] : $item['elements'][0]['elements'][0]['params'];
+                                $params                    = $item['elements'][0]['tag']
+                                                             === 'img' ? $item['elements'][0]['params'] : $item['elements'][0]['elements'][0]['params'];
                                 $images['img_' . $counter] = [
-                                    'tag'   => 'img',
-                                    'class' => $domElement->getAttribute('class'),
-                                    'params' => $params
+                                    'tag'    => 'img',
+                                    'class'  => $domElement->getAttribute('class'),
+                                    'params' => $params,
                                 ];
                                 $counter++;
                             }
@@ -299,9 +307,9 @@ class CsvMapper extends AbstractMapper implements MapperInterface
         foreach ($elements as $element) {
             if (array_key_exists('collage', $element)) {
                 $newContentElement['images'] = $element['collage'];
-                $textImage[] = $newContentElement;
-                $newContentElement = [];
-                }
+                $textImage[]                 = $newContentElement;
+                $newContentElement           = [];
+            }
             if (array_key_exists('tag', $element)) {
                 $newContentElement['text'][] = $element;
             }
@@ -321,14 +329,16 @@ class CsvMapper extends AbstractMapper implements MapperInterface
      * @throws \TYPO3\CMS\Core\Resource\Exception\AbstractFileOperationException
      * @throws \TYPO3\CMS\Core\Resource\Exception\ExistingTargetFileNameException
      * @throws \TYPO3\CMS\Extbase\Persistence\Exception\IllegalObjectTypeException
+     * @throws \TYPO3\CMS\Extbase\Persistence\Exception\UnknownObjectException
      */
     protected function createTextPicContentElements(array $contentElements, TaskConfiguration $configuration): string
     {
         $contentElementIds = [];
         foreach ($contentElements as $element) {
             /** @var TtContent $newContentElement */
-            $newContentElement = GeneralUtility::makeInstance('GeorgRinger\\News\\Domain\Model\\TtContent');
+            $newContentElement = GeneralUtility::makeInstance('GeorgRinger\\NewsImporticsxml\\Domain\Model\\TtContent');
             $newContentElement->setPid($configuration->getPid());
+            $newContentElement->setCruserId($this->userId);
             $newContentElement->setCType('textpic');
             $bodytext = '';
             foreach ($element['text'] ?? [] as $textElement) {
@@ -344,14 +354,17 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                     $image = $this->imageImportService->createFalRelation(
                         $media[0],
                         $configuration->getPid(),
-                        $newContentElement->getUid()
+                        $newContentElement->getUid(),
+                        $this->userId
                     );
                 }
             }
             $newContentElement->setImage((bool)count($element['images'] ?? []));
             $newContentElement->setImageorient(self::IMAGE_ORIENTATION_BELOW_CENTER);
             $newContentElement->setImagecols(count($element['images'] ?? []) > 1 ? 2 : 1);
+            $this->ttContentRepository->update($newContentElement);
         }
+        $this->persistenceManager->persistAll();
         return implode(',', $contentElementIds);
     }
 
@@ -361,7 +374,8 @@ class CsvMapper extends AbstractMapper implements MapperInterface
      */
     protected function findTeaser(array $contentElements): string
     {
-        $teaser   = $this->findFirstTag('textnode', $contentElements);
+        $teaser = $this->findFirstTag('textnode', $contentElements);
+        $teaser = str_replace('&amp;', '&', $teaser);
         return substr($teaser, 0, strpos($teaser, ' ', 150));
     }
 
@@ -407,10 +421,18 @@ class CsvMapper extends AbstractMapper implements MapperInterface
         if (array_key_exists('tag', $elements)) {
             $href = '';
             if ($elements['href']) {
-                $url = str_replace(['http', '%20'], ['https', ''], $elements['href']);
+                $url  = str_replace(['http', '%20'], ['https', ''], $elements['href']);
                 $href = ' href="' . $url . '"';
             }
-            $bodytext = '<' . $elements['tag'] . ' class="' . $elements['class'] . '" style="' . $elements['style'] . '"' . $href . '>';
+            $bodytext = '<'
+                        . $elements['tag']
+                        . ' class="'
+                        . $elements['class']
+                        . '" style="'
+                        . $elements['style']
+                        . '"'
+                        . $href
+                        . '>';
             foreach ($elements['elements'] as $element) {
                 $bodytext .= $this->getBodytextElements($element);
             }
@@ -508,7 +530,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     }
 
     /**
-     * @throws \InvalidArgumentException
+     *
      */
     protected function enableTagSearching()
     {

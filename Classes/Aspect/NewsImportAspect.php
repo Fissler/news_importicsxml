@@ -35,12 +35,12 @@ class NewsImportAspect
         if (isset($importData['tags'])) {
             foreach ($importData['tags'] as $tagUid) {
                 /** @var Tag $tag */
-                $tag = $this->tagRepository->findByUid($tagUid);
-                if ($tag) {
+                if (($tag = $this->tagRepository->findByUid($tagUid))) {
                     $news->addTag($tag);
                 }
             }
         }
         $news->setPathSegment($importData['path_segment'] ?? '');
+        $news->setCruserId($importData['cruser_id']);
     }
 }

@@ -11,28 +11,40 @@ namespace GeorgRinger\NewsImporticsxml\Service;
 
 use GeorgRinger\News\Domain\Service\AbstractImportService;
 use RuntimeException;
-use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Resource\Exception\AbstractFileOperationException;
 use TYPO3\CMS\Core\Resource\Exception\ExistingTargetFileNameException;
 use TYPO3\CMS\Core\Resource\Exception\ResourceDoesNotExistException;
-use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Core\Utility\MathUtility;
 
 /**
  * Class ImageImportService
  */
 class ImageImportService extends AbstractImportService
 {
+    /**
+     * @var \TYPO3\CMS\Core\DataHandling\DataHandler
+     * @inject
+     */
+    protected $dataHandler;
+
+    /**
+     * @var \TYPO3\CMS\Core\Resource\FileRepository
+     * @inject
+     */
+    protected $fileRepository;
 
     /**
      * @param array $mediaItem
      * @param int   $pid
      * @param int   $uid
+     * @param int   $userId
+     * @param int   $sys_language_uid
      * @return bool
-     * @throws RuntimeException
      * @throws AbstractFileOperationException
-     * @throws ExistingTargetFileNameException|\InvalidArgumentException
+     * @throws ExistingTargetFileNameException
+     * @throws RuntimeException
      */
-    public function createFalRelation(array $mediaItem, int $pid, int $uid): bool
+    public function createFalRelation(array $mediaItem, int $pid, int $uid, $userId = 1, $sys_language_uid = 0): bool
     {
         // get fileobject by given identifier (file UID, combined identifier or path/filename)
         try {
@@ -59,25 +71,40 @@ class ImageImportService extends AbstractImportService
             $file = $this->getResourceStorage()->copyFile($file, $this->getImportFolder());
         }
 
-        $data['sys_file_reference']['aStringIsNecessary'] = [
-            'table_local'   => 'sys_file',
-            'uid_local'     => $file->getUid(),
-            'tablenames'    => 'tt_content',
-            'uid_foreign'   => $uid,
-            'fieldname'     => 'image',
-            'pid'           => $pid,
-            'title'         => $mediaItem['title'] ?? '',
-            'alternative'   => $mediaItem['alt'] ?? '',
-            'link'          => $mediaItem['link'] ?? ''
+        $l10n_parent = 0;
+        if (MathUtility::canBeInterpretedAsInteger($mediaItem['uid'])) {
+            $l10n_parent = $mediaItem['uid'];
+        }
+        // create a new entry in sys_file_reference, a string is necessary for a new entry
+        $data['sys_file_reference'][''] = [
+            'table_local'      => 'sys_file',
+            'cruser_id'        => $userId,
+            'uid_local'        => $file->getUid(),
+            'tablenames'       => 'tt_content',
+            'uid_foreign'      => $uid,
+            'fieldname'        => 'image',
+            'pid'              => $pid,
+            'sys_language_uid' => $sys_language_uid,
+            'l10n_parent'      => $l10n_parent,
+            'title'            => $mediaItem['title'] ?? '',
+            'alternative'      => $mediaItem['alt'] ?? '',
+            'link'             => $mediaItem['link'] ?? '',
         ];
 
-        /** @var DataHandler $dataHandler */
-        $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
-        $dataHandler->start($data, array());
-        $dataHandler->process_datamap();
+        $this->dataHandler->start($data, array());
+        $this->dataHandler->process_datamap();
 
         // Error or success reporting
-        return count($dataHandler->errorLog) === 0;
+        return count($this->dataHandler->errorLog) === 0;
     }
 
+    /**
+     * @param int $uid
+     * @return array
+     * @throws \InvalidArgumentException
+     */
+    public function getFalRelationUids(int $uid): array
+    {
+        return $this->fileRepository->findByRelation('tt_content', 'image', $uid);
+    }
 }

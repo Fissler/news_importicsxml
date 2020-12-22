@@ -4,5 +4,15 @@ config.tx_extbase.persistence.classes {
             tableName = tx_news_domain_model_tag
         }
     }
+    GeorgRinger\NewsImporticsxml\Domain\Model\TtContent {
+        mapping {
+            tableName = tt_content
+            columns {
+                sys_language_uid.mapOnProperty = sys_language_uid
+                cruser_id.mapOnProperty = cruser_id
+                l18n_parent.mapOnProperty = l18n_parent
+            }
+        }
+    }
 }
 
