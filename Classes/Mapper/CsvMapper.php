@@ -94,13 +94,14 @@ class CsvMapper extends AbstractMapper implements MapperInterface
         }
 
         $items = $this->readCsvFile($importFile);
+        $items = $this->fieldConverter($items);
         $this->enableTagSearching();
 
         foreach ($items as $item) {
             $content         = $this->cleanup($item['content'] ?? '');
             $contentElements = $this->parseHtmlToContentElements($content);
             $singleItem      = [
-                'hidden'           => ($item['status'] !== 'publish'),
+                'hidden'           => (($item['status'] ?? 'false') !== 'publish'),
                 'import_source'    => $this->getImportSource(),
                 'import_id'        => md5($item['link'] ?? (string)uniqid()),
                 'crdate'           => $GLOBALS['EXEC_TIME'],
@@ -108,13 +109,13 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                 'type'             => 0,
                 'pid'              => $configuration->getPid(),
                 'title'            => $item['title'] ?? 'no Title(' . uniqid() . ')',
-                'path_segment'     => pathinfo($item['link'], PATHINFO_BASENAME),
+                'path_segment'     => pathinfo($item['link'] ?? '', PATHINFO_BASENAME),
                 'bodytext'         => '', //$content,
                 'content_elements' => $this->createTextPicContentElements($contentElements, $configuration),
                 'teaser'           => $this->findTeaser($contentElements),
                 'author'           => '',
                 'media'            => $this->getRemoteFile($this->findFirstImage($contentElements)),
-                'datetime'         => strtotime($item['publishdate']),
+                'datetime'         => strtotime($item['publishdate'] ?? ''),
                 'categories'       => $this->getGroupingElements(
                     $item['categories'],
                     'category',
@@ -127,7 +128,8 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                         'importDate' => date('d.m.Y h:i:s', $GLOBALS['EXEC_TIME']),
                         'feed'       => $configuration->getPath(),
                         'url'        => $item['link'] ?? '',
-                        'guid'       => '', //ToDo import id
+                        'guid'       => $item['id'] ?? '',
+                        'author'     => $item['author'] ?? '',
                     ],
                 ],
             ];
@@ -216,7 +218,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                             'GeorgRinger\\NewsImporticsxml\\Domain\\Model\\' . ucfirst($repository)
                         )
                         : GeneralUtility::makeInstance('GeorgRinger\\News\\Domain\\Model\\' . ucfirst($repository));
-                    $newGroupElement->setTitle($element);
+                    $newGroupElement->setTitle(ucfirst($element));
                     $newGroupElement->setSlug(strtolower($element));
                     $newGroupElement->setPid($categoryPid);
                     $this->{$repository . 'Repository'}->add($newGroupElement);
@@ -284,8 +286,10 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                             $images  = [];
                             $counter = 1;
                             foreach ($collage as $item) {
-                                $params                    = $item['elements'][0]['tag']
-                                                             === 'img' ? $item['elements'][0]['params'] : $item['elements'][0]['elements'][0]['params'];
+                                $params = $item['elements'][0]['tag'] === 'img'
+                                    ? $item['elements'][0]['params']
+                                    : $item['elements'][0]['elements'][0]['params'];
+
                                 $images['img_' . $counter] = [
                                     'tag'    => 'img',
                                     'class'  => $domElement->getAttribute('class'),
@@ -539,6 +543,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
 
     /**
      *
+     * @throws \InvalidArgumentException
      */
     protected function enableTagSearching()
     {
@@ -548,5 +553,46 @@ class CsvMapper extends AbstractMapper implements MapperInterface
         $querySettings->setRespectStoragePage(false);
 
         $this->tagRepository->setDefaultQuerySettings($querySettings);
+    }
+
+    /**
+     * @param array $items
+     * @return array
+     */
+    protected function fieldConverter(array $items): array
+    {
+        $fieldMapper    = [
+            'pubdate'            => 'publishdate',
+            'creator/__cdata'    => 'author',
+            'encoded/*/__cdata'  => 'content',
+            'post_id/__text'     => 'id',
+            'status/__text'      => 'status',
+            'category/*/__cdata' => 'taxonomy_title',
+        ];
+        $convertedItems = [];
+
+        foreach ($items as $item) {
+            $convertedItem = [];
+            foreach (array_keys($item) as $property) {
+                $separator      = '';
+                $mappedProperty = preg_replace('/\d+/', '*', $property);
+                $newProperty    = array_key_exists($mappedProperty, $fieldMapper)
+                    ? $fieldMapper[$mappedProperty]
+                    : $property;
+                if ($newProperty === 'taxonomy_title') {
+                    //find categories or tags and collect them in a new property
+                    $taxonomyTypeProperty = str_replace('__cdata', '_domain', $property);
+                    $newProperty          = strtolower($item[$taxonomyTypeProperty]) === 'category'
+                        ? 'categories'
+                        : 'tags';
+                    $separator            = $convertedItem[$newProperty] ? ',' : '';
+                }
+                if ($item[$property]) {
+                    $convertedItem[$newProperty] .= $separator . $item[$property];
+                }
+            }
+            $convertedItems[] = $convertedItem;
+        }
+        return $convertedItems;
     }
 }
