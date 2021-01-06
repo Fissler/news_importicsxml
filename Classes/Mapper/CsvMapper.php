@@ -115,13 +115,13 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                 'teaser'           => $this->findTeaser($contentElements),
                 'author'           => '',
                 'media'            => $this->getRemoteFile($this->findFirstImage($contentElements)),
-                'datetime'         => strtotime($item['publishdate'] ?? ''),
+                'datetime'         => strtotime($item['publishdate'] ?? $item['post_date'] ?? ''),
                 'categories'       => $this->getGroupingElements(
-                    $item['categories'],
+                    $item['categories'] ?? '',
                     'category',
                     $configuration->getCatPid()
                 ),
-                'tags'             => $this->getGroupingElements($item['tags'], 'tag', $configuration->getCatPid()),
+                'tags'             => $this->getGroupingElements($item['tags'] ?? '', 'tag', $configuration->getCatPid()),
                 '_dynamicData'     => [
                     'reference'         => $item,
                     'news_importicsxml' => [
@@ -242,8 +242,8 @@ class CsvMapper extends AbstractMapper implements MapperInterface
      */
     protected function cleanup(string $content): string
     {
-        $search  = [LF . LF, '&'];
-        $replace = ['', '&amp;'];
+        $search  = [LF . LF, '&nbsp;', '& '];
+        $replace = ['', '', '&amp;'];
         $out     = str_replace($search, $replace, $content);
         return $out;
     }
@@ -255,7 +255,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     protected function parseHtmlToContentElements(string $content): array
     {
         $htmlDom = new DOMDocument();
-        $htmlDom->loadHTML('<?xml encoding="utf-8" ?>' . $content);
+        @$htmlDom->loadHTML('<?xml encoding="utf-8" ?>' . $content);
         $elements = $textImage = [];
 
         /** @var DOMNodeList $domElements */
@@ -272,16 +272,19 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                     case 'h4' :
                     case 'h5' :
                     case 'h6' :
+                    case 'blockquote' :
                     case 'p' :
-                    case 'div' :
-                        if ($domElement->textContent) {
+                        if ($domElement->textContent && $domElement->parentNode->nodeName !== 'div') {
                             $element = [
                                 'tag'      => $domElement->nodeName,
                                 'class'    => $domElement->getAttribute('class'),
                                 'style'    => $domElement->getAttribute('style'),
                                 'elements' => $this->searchDomChildElements($domElement),
                             ];
-                        } elseif ($domElement->parentNode->nodeName !== 'div') {
+                        }
+                        break;
+                    case 'div' :
+                         if ($domElement->parentNode->nodeName !== 'div') {
                             $collage = $this->searchDomChildElements($domElement);
                             $images  = [];
                             $counter = 1;
@@ -380,7 +383,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     {
         $teaser = $this->findFirstTag('textnode', $contentElements);
         $teaser = str_replace('&amp;', '&', $teaser);
-        return substr($teaser, 0, strpos($teaser, ' ', 150));
+        return strlen($teaser) > 150 ? substr($teaser, 0, strpos($teaser, ' ',  150)) : $teaser;
     }
 
     /**
@@ -424,8 +427,11 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     {
         if (array_key_exists('tag', $elements)) {
             $href = $style = $class = '';
+            if ($elements['tag'] === 'time') {
+                $elements['tag'] = 'span';
+            }
             if ($elements['href']) {
-                $url  = str_replace(['http', '%20'], ['https', ''], $elements['href']);
+                $url  = str_replace(['http:', '%20'], ['https:', ''], $elements['href']);
                 $href = ' href="' . $url . '"';
             }
             if ($elements['class']) {
@@ -562,12 +568,13 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     protected function fieldConverter(array $items): array
     {
         $fieldMapper    = [
-            'pubdate'            => 'publishdate',
-            'creator/__cdata'    => 'author',
-            'encoded/*/__cdata'  => 'content',
-            'post_id/__text'     => 'id',
-            'status/__text'      => 'status',
-            'category/*/__cdata' => 'taxonomy_title',
+            'pubdate'               => 'publishdate',
+            'post_date/__text'      => 'post_date',
+            'creator/__cdata'       => 'author',
+            'encoded/*/__cdata'     => 'content',
+            'post_id/__text'        => 'id',
+            'status/__text'         => 'status',
+            'category/*/__cdata'    => 'taxonomy_title',
         ];
         $convertedItems = [];
 
