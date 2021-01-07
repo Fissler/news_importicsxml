@@ -48,6 +48,10 @@ class ImportTask extends AbstractTask
     /** @var int */
     public $lang;
 
+    /**
+     * @return bool
+     * @throws \InvalidArgumentException
+     */
     public function execute()
     {
         $success = true;

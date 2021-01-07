@@ -220,7 +220,8 @@ class CsvMapper extends AbstractMapper implements MapperInterface
         $groupingElements = GeneralUtility::trimExplode(',', $elements, true);
         if (!empty($groupingElements)) {
             foreach ($groupingElements as $element) {
-                $groupingElement = $this->{$repository . 'Repository'}->findByTitle($element);
+                $groupingElement = $this->{$repository . 'Repository'}->findByTitle(ucfirst($element));
+                $l10nGroup       = false;
                 if (!$groupingElement->getFirst()) {
                     $newGroupElement = ($repository === 'tag')
                         ? GeneralUtility::makeInstance(
@@ -232,14 +233,14 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                     $newGroupElement->setPid($categoryPid);
                     $this->{$repository . 'Repository'}->add($newGroupElement);
                     $this->persistenceManager->persistAll();
-                    $groupingElement = $this->{$repository . 'Repository'}->findByTitle($element);
+                    $groupingElement = $this->{$repository . 'Repository'}->findByTitle(ucfirst($element));
                 }
                 if ($this->targetLanguage) {
                     $table = $repository === 'tag' ? 'tx_news_domain_model_tag' : 'sys_category';
                     $this->dataHandler->start([], []);
-                    $this->dataHandler->localize($table, $groupingElement->getFirst()->getUid(), $this->targetLanguage);
+                    $l10nGroup = $this->dataHandler->localize($table, $groupingElement->getFirst()->getUid(), $this->targetLanguage);
                 }
-                $groupingIds[] = $groupingElement->getFirst()->getUid();
+                $groupingIds[] = $l10nGroup ? $l10nGroup : $groupingElement->getFirst()->getUid();
             }
         }
         return $groupingIds;
@@ -612,6 +613,10 @@ class CsvMapper extends AbstractMapper implements MapperInterface
         return $convertedItems;
     }
 
+    /**
+     * @param array $item
+     * @return bool
+     */
     protected function checkImportedIdAndSource(array $item): bool
     {
         return (bool)$this->newsRepository->findOneByImportSourceAndImportId(
