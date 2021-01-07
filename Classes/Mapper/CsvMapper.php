@@ -36,6 +36,12 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     const TITLE_LANGUAGE_COPY_MARKER = '..[0]';
 
     /**
+     * @var \GeorgRinger\News\Domain\Repository\NewsRepository
+     * @inject
+     */
+    protected $newsRepository;
+
+    /**
      * @var \GeorgRinger\NewsImporticsxml\Domain\Repository\TtContentRepository
      * @inject
      */
@@ -82,7 +88,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
      * @return array
      * @throws Exception
      */
-    public function map(TaskConfiguration $configuration)
+    public function map(TaskConfiguration $configuration): array
     {
         $data                 = [];
         $this->userId         = $GLOBALS['BE_USER']->user['uid'] ?? 1;
@@ -98,12 +104,15 @@ class CsvMapper extends AbstractMapper implements MapperInterface
         $this->enableTagSearching();
 
         foreach ($items as $item) {
+            if ($this->checkImportedIdAndSource($item)) {
+                continue;
+            }
             $content         = $this->cleanup($item['content'] ?? '');
             $contentElements = $this->parseHtmlToContentElements($content);
             $singleItem      = [
                 'hidden'           => (($item['status'] ?? 'false') !== 'publish'),
                 'import_source'    => $this->getImportSource(),
-                'import_id'        => md5($item['link'] ?? (string)uniqid()),
+                'import_id'        => md5(($item['author'] ?? '') . '_' . ($item['id'] ?? $item['link'] ?? uniqid())),
                 'crdate'           => $GLOBALS['EXEC_TIME'],
                 'cruser_id'        => $this->userId,
                 'type'             => 0,
@@ -243,7 +252,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
     protected function cleanup(string $content): string
     {
         $search  = [LF . LF, '&nbsp;', '& '];
-        $replace = ['', '', '&amp;'];
+        $replace = ['', '', '&amp; '];
         $out     = str_replace($search, $replace, $content);
         return $out;
     }
@@ -601,5 +610,12 @@ class CsvMapper extends AbstractMapper implements MapperInterface
             $convertedItems[] = $convertedItem;
         }
         return $convertedItems;
+    }
+
+    protected function checkImportedIdAndSource(array $item): bool
+    {
+        return (bool)$this->newsRepository->findOneByImportSourceAndImportId(
+            $this->getImportSource(),
+            md5(($item['author'] ?? '') . '_' . ($item['id'] ?? $item['link'] ?? 0)));
     }
 }
