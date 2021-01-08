@@ -252,6 +252,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
      */
     protected function cleanup(string $content): string
     {
+        $content = preg_replace('/&#+[\d]+;/', '', $content);
         $search  = [LF . LF, '&nbsp;', '& '];
         $replace = ['', '', '&amp; '];
         $out     = str_replace($search, $replace, $content);
