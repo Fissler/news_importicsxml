@@ -529,7 +529,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
      * @return array
      * @throws Exception
      */
-    public function readCsvFile($file, array $head = [], $length = 12288, $delimiter = ','): array
+    public function readCsvFile($file, array $head = [], $length = 13312, $delimiter = ','): array
     {
         $importArray = [];
         $counter     = 0;
