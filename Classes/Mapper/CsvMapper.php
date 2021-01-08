@@ -124,7 +124,7 @@ class CsvMapper extends AbstractMapper implements MapperInterface
                 'teaser'           => $this->findTeaser($contentElements),
                 'author'           => '',
                 'media'            => $this->getRemoteFile($this->findFirstImage($contentElements)),
-                'datetime'         => strtotime($item['publishdate'] ?? $item['post_date'] ?? ''),
+                'datetime'         => strtotime($item['post_date'] ?? $item['publishdate'] ?? ''),
                 'categories'       => $this->getGroupingElements(
                     $item['categories'] ?? '',
                     'category',
